@@ -1,5 +1,5 @@
-import vertexShader from './shaders/vertexShader.glsl';
-import fragmentShader from './shaders/fragmentShader.glsl';
+import vertexShader from './vertexShader.glsl';
+import fragmentShader from './fragmentShader.glsl';
 
 const shaderMaterial = new THREE.ShaderMaterial({
   vertexShader,
