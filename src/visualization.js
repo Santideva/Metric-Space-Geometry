@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import * as dat from 'dat.gui';
 import StateStore from './state-store';
 import { MetricVertex, MetricSpaceGeometry } from './core/metric-space-geometry';
+import vertexShader from './shaders/customVertexShader.glsl';
+import fragmentShader from './shaders/customFragmentShader.glsl';
 
 class MetricSpaceVisualization {
   constructor(mountElement, vertexCount = 5) {
@@ -11,11 +13,12 @@ class MetricSpaceVisualization {
     this.camera = null;
     this.renderer = null;
     this.controls = null;
-    this.points = null;
-    this.lines = null;
+    this.renderObject = null;
+    this.lineSegments = null;
     this.gui = null;
     this.vertexCount = vertexCount;
     this.vertices = [];
+    this.renderMode = 'points'; // Default render mode
 
     this.init();
   }
@@ -54,6 +57,76 @@ class MetricSpaceVisualization {
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
+  createShaderMaterial() {
+    return new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: {
+        uTime: { value: 0 },
+        u_position: { value: new THREE.Vector3(0, 0, 0) },
+        u_mass: { value: 1.0 },
+        u_charge: { value: 0.5 },
+        u_symmetryIndex: { value: 1.0 },
+        u_reflectivity: { value: 0.7 },
+        u_valency: { value: 1.0 },
+        u_volume: { value: 1.0 },
+        u_density: { value: 1.0 },
+        u_orientation: { value: new THREE.Vector3(0, 0, 0) },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        // Additional uniforms for polygon properties:
+        uChladniAmplitude: { value: 1.0 },
+        uChladniFrequencyX: { value: 1.0 },
+        uChladniFrequencyY: { value: 1.0 },
+        uUseClassicalMobius: { value: true },
+        uMobiusFactor: { value: 1.0 },
+        uNoiseScale: { value: 1.0 },
+        uAnimationSpeed: { value: 1.0 },
+        uA: { value: new THREE.Vector2(1, 0) },
+        uB: { value: new THREE.Vector2(0, 0) },
+        uC: { value: new THREE.Vector2(0, 0) },
+        uD: { value: new THREE.Vector2(1, 0) }
+      },
+      transparent: true,
+      depthWrite: false
+    });
+  }
+
+  createMetricGeometry() {
+    // Clear previous objects from scene if they exist
+    if (this.renderObject) this.scene.remove(this.renderObject);
+    if (this.lineSegments) this.scene.remove(this.lineSegments);
+    
+    // Create metric space geometry
+    const metricGeometry = new MetricSpaceGeometry(this.vertices, StateStore.getConfig());
+
+    // Create geometries
+    const { pointGeometry, lineGeometry } = metricGeometry.createGeometries(THREE);
+
+    // Create shader material
+    const shaderMaterial = this.createShaderMaterial();
+
+    // Create rendering object based on current mode
+    if (this.renderMode === 'points') {
+      // Points object
+      this.renderObject = new THREE.Points(pointGeometry, shaderMaterial);
+    } else {
+      // Mesh object
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', pointGeometry.getAttribute('position'));
+      this.renderObject = new THREE.Mesh(geometry, shaderMaterial);
+    }
+    this.scene.add(this.renderObject);
+
+    // Connecting lines
+    const lineMaterial = new THREE.LineBasicMaterial({ 
+      color: StateStore.config.lineColor,
+      transparent: true,
+      opacity: StateStore.config.lineOpacity
+    });
+    this.lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
+    this.scene.add(this.lineSegments);
+  }
+
   generateVertices(count) {
     this.vertices = [];
     
@@ -71,37 +144,6 @@ class MetricSpaceVisualization {
     }
     
     return this.vertices;
-  }
-
-  createMetricGeometry() {
-    // Clear previous objects from scene if they exist
-    if (this.points) this.scene.remove(this.points);
-    if (this.lines) this.scene.remove(this.lines);
-    
-    // Create metric space geometry
-    const metricGeometry = new MetricSpaceGeometry(this.vertices, StateStore.getConfig());
-
-    // Create and add geometries to scene
-    const { pointGeometry, lineGeometry } = metricGeometry.createGeometries(THREE);
-
-    // Points
-    const pointMaterial = new THREE.PointsMaterial({ 
-      size: StateStore.config.pointSize, 
-      color: StateStore.config.pointColor,
-      transparent: true,
-      opacity: StateStore.config.pointOpacity
-    });
-    this.points = new THREE.Points(pointGeometry, pointMaterial);
-    this.scene.add(this.points);
-
-    // Connecting lines
-    const lineMaterial = new THREE.LineBasicMaterial({ 
-      color: StateStore.config.lineColor,
-      transparent: true,
-      opacity: StateStore.config.lineOpacity
-    });
-    this.lines = new THREE.LineSegments(lineGeometry, lineMaterial);
-    this.scene.add(this.lines);
   }
 
   regenerateVertices(count) {
@@ -141,6 +183,11 @@ class MetricSpaceVisualization {
     visualFolder.addColor(StateStore.config, 'lineColor').onChange(value => StateStore.update('lineColor', value));
     visualFolder.add(StateStore.config, 'lineOpacity', 0, 1).onChange(value => StateStore.update('lineOpacity', value));
 
+    // Render Mode Toggle
+    const renderModeController = visualFolder.add(this, 'renderMode', ['points', 'mesh'])
+      .name('Render Mode')
+      .onChange(() => this.createMetricGeometry());
+
     // Interaction Parameters
     const interactionFolder = this.gui.addFolder('Interaction');
     interactionFolder.add(StateStore.config, 'autoRotate').onChange(value => StateStore.update('autoRotate', value));
@@ -150,17 +197,55 @@ class MetricSpaceVisualization {
   updateVisualization(key, value) {
     // Update point material
     if (['pointSize', 'pointColor', 'pointOpacity'].includes(key)) {
-      this.points.material.needsUpdate = true;
-      this.points.material.size = StateStore.config.pointSize;
-      this.points.material.color.setHex(StateStore.config.pointColor);
-      this.points.material.opacity = StateStore.config.pointOpacity;
+      if (this.renderObject && this.renderObject.material) {
+        // Always mark material as needing update
+        this.renderObject.material.needsUpdate = true;
+        
+        try {
+          // Check if it's a Points object before setting size
+          if (this.renderObject instanceof THREE.Points) {
+            // Safely set point size
+            if (typeof StateStore.config.pointSize === 'number') {
+              this.renderObject.material.size = StateStore.config.pointSize;
+            }
+            
+            // Safely set color - convert hex to THREE.Color
+            if (typeof StateStore.config.pointColor === 'number') {
+              this.renderObject.material.color = new THREE.Color(StateStore.config.pointColor);
+            }
+            
+            // Safely set opacity
+            if (typeof StateStore.config.pointOpacity === 'number') {
+              this.renderObject.material.opacity = StateStore.config.pointOpacity;
+              this.renderObject.material.transparent = true;
+            }
+          }
+        } catch (error) {
+          console.error('Error updating point material:', error);
+        }
+      }
     }
-
+  
     // Update line material
     if (['lineColor', 'lineOpacity'].includes(key)) {
-      this.lines.material.needsUpdate = true;
-      this.lines.material.color.setHex(StateStore.config.lineColor);
-      this.lines.material.opacity = StateStore.config.lineOpacity;
+      if (this.lineSegments && this.lineSegments.material) {
+        try {
+          // Safely set line color
+          if (typeof StateStore.config.lineColor === 'number') {
+            this.lineSegments.material.color = new THREE.Color(StateStore.config.lineColor);
+          }
+          
+          // Safely set line opacity
+          if (typeof StateStore.config.lineOpacity === 'number') {
+            this.lineSegments.material.opacity = StateStore.config.lineOpacity;
+            this.lineSegments.material.transparent = true;
+          }
+          
+          this.lineSegments.material.needsUpdate = true;
+        } catch (error) {
+          console.error('Error updating line material:', error);
+        }
+      }
     }
     
     // Regenerate geometry if metric parameters change
@@ -172,6 +257,11 @@ class MetricSpaceVisualization {
   animate() {
     requestAnimationFrame(this.animate.bind(this));
     
+    // Update shader time uniform for animation
+    if (this.renderObject && this.renderObject.material) {
+      this.renderObject.material.uniforms.uTime.value = performance.now() * 0.001;
+    }
+
     // Optional auto-rotation
     if (StateStore.config.autoRotate) {
       const rotationSpeed = 0.001 * StateStore.config.animationSpeed;
@@ -186,6 +276,14 @@ class MetricSpaceVisualization {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Update resolution uniform if shader material exists
+    if (this.renderObject && this.renderObject.material) {
+      this.renderObject.material.uniforms.u_resolution.value.set(
+        window.innerWidth, 
+        window.innerHeight
+      );
+    }
   }
 
   // Cleanup method
@@ -194,10 +292,18 @@ class MetricSpaceVisualization {
     window.removeEventListener('resize', this.onWindowResize);
     
     // Dispose Three.js resources
-    this.points.geometry.dispose();
-    this.points.material.dispose();
-    this.lines.geometry.dispose();
-    this.lines.material.dispose();
+    if (this.renderObject) {
+      this.renderObject.geometry.dispose();
+      this.renderObject.material.dispose();
+      this.scene.remove(this.renderObject);
+    }
+
+    if (this.lineSegments) {
+      this.lineSegments.geometry.dispose();
+      this.lineSegments.material.dispose();
+      this.scene.remove(this.lineSegments);
+    }
+
     this.renderer.dispose();
     this.controls.dispose();
 
