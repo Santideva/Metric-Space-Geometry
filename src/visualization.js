@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import * as dat from 'dat.gui';
 import StateStore from './state-store';
-import { MetricVertex, MetricSpaceGeometry } from './metric-space-geometry';
+import { MetricVertex, MetricSpaceGeometry } from './core/metric-space-geometry';
 
 class MetricSpaceVisualization {
-  constructor(mountElement) {
+  constructor(mountElement, vertexCount = 5) {
     this.mountElement = mountElement;
     this.scene = null;
     this.camera = null;
@@ -14,6 +14,8 @@ class MetricSpaceVisualization {
     this.points = null;
     this.lines = null;
     this.gui = null;
+    this.vertexCount = vertexCount;
+    this.vertices = [];
 
     this.init();
   }
@@ -26,17 +28,58 @@ class MetricSpaceVisualization {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.mountElement.appendChild(this.renderer.domElement);
 
-    // Create vertices with varying weights and curvatures
-    const vertices = [
-      new MetricVertex(0, 0, 0, 1.0, 0.2),
-      new MetricVertex(2, 1, 0, 0.8, 0.3),
-      new MetricVertex(1, 2, 1, 1.2, 0.1),
-      new MetricVertex(3, 0, 2, 0.5, 0.4),
-      new MetricVertex(-1, 1, -1, 0.9, 0.2),
-    ];
-
+    // Generate vertices
+    this.generateVertices(this.vertexCount);
+    
     // Create metric space geometry
-    const metricGeometry = new MetricSpaceGeometry(vertices, StateStore.getConfig());
+    this.createMetricGeometry();
+
+    // Camera positioning
+    this.camera.position.z = 5;
+
+    // Orbit controls
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+
+    // Setup GUI
+    this.setupGUI();
+
+    // Subscribe to state changes
+    StateStore.subscribe(this.updateVisualization.bind(this));
+
+    // Start animation
+    this.animate();
+
+    // Resize handler
+    window.addEventListener('resize', this.onWindowResize.bind(this));
+  }
+
+  generateVertices(count) {
+    this.vertices = [];
+    
+    for (let i = 0; i < count; i++) {
+      // Generate random positions in a cube
+      const x = (Math.random() - 0.5) * 4;
+      const y = (Math.random() - 0.5) * 4;
+      const z = (Math.random() - 0.5) * 4;
+      
+      // Generate random weights and curvatures
+      const weight = 0.5 + Math.random() * 1.0; // Between 0.5 and 1.5
+      const curvature = 0.1 + Math.random() * 0.4; // Between 0.1 and 0.5
+      
+      this.vertices.push(new MetricVertex(x, y, z, weight, curvature));
+    }
+    
+    return this.vertices;
+  }
+
+  createMetricGeometry() {
+    // Clear previous objects from scene if they exist
+    if (this.points) this.scene.remove(this.points);
+    if (this.lines) this.scene.remove(this.lines);
+    
+    // Create metric space geometry
+    const metricGeometry = new MetricSpaceGeometry(this.vertices, StateStore.getConfig());
 
     // Create and add geometries to scene
     const { pointGeometry, lineGeometry } = metricGeometry.createGeometries(THREE);
@@ -59,29 +102,29 @@ class MetricSpaceVisualization {
     });
     this.lines = new THREE.LineSegments(lineGeometry, lineMaterial);
     this.scene.add(this.lines);
+  }
 
-    // Camera positioning
-    this.camera.position.z = 5;
-
-    // Orbit controls
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-
-    // Setup GUI
-    this.setupGUI();
-
-    // Subscribe to state changes
-    StateStore.subscribe(this.updateVisualization.bind(this));
-
-    // Start animation
-    this.animate();
-
-    // Resize handler
-    window.addEventListener('resize', this.onWindowResize.bind(this));
+  regenerateVertices(count) {
+    // Update vertex count
+    this.vertexCount = count;
+    
+    // Generate new vertices
+    this.generateVertices(count);
+    
+    // Recreate the geometry
+    this.createMetricGeometry();
   }
 
   setupGUI() {
     this.gui = new dat.GUI();
+
+    // Vertex Generation
+    const vertexFolder = this.gui.addFolder('Vertices');
+    vertexFolder.add({ vertexCount: this.vertexCount }, 'vertexCount', 3, 500).step(1)
+      .onChange(value => this.regenerateVertices(Math.floor(value)));
+    vertexFolder.add({ regenerate: () => this.regenerateVertices(this.vertexCount) }, 'regenerate')
+      .name('Regenerate Vertices');
+    vertexFolder.open();
 
     // Metric Space Parameters
     const metricFolder = this.gui.addFolder('Metric Space');
@@ -118,6 +161,11 @@ class MetricSpaceVisualization {
       this.lines.material.needsUpdate = true;
       this.lines.material.color.setHex(StateStore.config.lineColor);
       this.lines.material.opacity = StateStore.config.lineOpacity;
+    }
+    
+    // Regenerate geometry if metric parameters change
+    if (['alpha', 'beta', 'gamma', 'threshold'].includes(key)) {
+      this.createMetricGeometry();
     }
   }
 

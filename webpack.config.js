@@ -18,9 +18,9 @@ module.exports = {
   // Development server configuration
   devServer: {
     static: './dist', // Serve from dist directory
-    hot: true, // Enable hot module replacement
-    open: true, // Automatically open browser
-    port: 8080 // Port for development server
+    hot: true,        // Enable hot module replacement
+    open: true,       // Automatically open browser
+    port: 8080        // Port for development server
   },
 
   // Plugins extend webpack's capabilities
@@ -37,14 +37,23 @@ module.exports = {
     rules: [
       // Babel loader for JavaScript
       {
-        test: /\.js$/, // Apply to .js files
-        exclude: /node_modules/, // Ignore node_modules
+        test: /\.js$/,
+        exclude: /node_modules/,
         use: {
-          loader: 'babel-loader', // Use Babel to transpile
+          loader: 'babel-loader', 
           options: {
             presets: ['@babel/preset-env']
           }
         }
+      },
+      // Loaders for GLSL files (vertex/fragment shaders)
+      {
+        test: /\.(glsl|vs|fs)$/,
+        exclude: /node_modules/,
+        use: [
+          'raw-loader',     // or 'raw-loader'
+          'glslify-loader'  // or 'glsl-shader-loader'
+        ]
       },
       // CSS loader (optional, but often useful)
       {
@@ -60,6 +69,6 @@ module.exports = {
   // Optimization settings
   optimization: {
     usedExports: true, // Tree shaking
-    minimize: false // Minification (true for production)
+    minimize: false    // Minification (true for production)
   }
 };
