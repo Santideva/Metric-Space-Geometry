@@ -249,27 +249,51 @@ class MetricSpaceVisualization {
     
     this.vertices = [];
     
+    // Use controlled randomization that preserves metric properties
     for (let i = 0; i < count; i++) {
-      // Generate random positions in a cube
-      const x = (Math.random() - 0.5) * 4;
-      const y = (Math.random() - 0.5) * 4;
-      const z = (Math.random() - 0.5) * 4;
+      // Linear space generation, but with controlled variance
+      const x = (Math.random() - 0.5) * 4 * (1 + Math.sin(i) * 0.2);
+      const y = (Math.random() - 0.5) * 4 * (1 + Math.cos(i) * 0.2);
+      const z = (Math.random() - 0.5) * 4 * (1 + Math.tan(i * 0.5) * 0.1);
       
-      // Generate random weights and curvatures
-      const weight = 0.5 + Math.random() * 1.0; // Between 0.5 and 1.5
-      const curvature = 0.1 + Math.random() * 0.4; // Between 0.1 and 0.5
+      // Weight and curvature generation with controlled distribution
+      const weight = 1.0 + Math.pow(Math.random(), 3) * 2.0; // Skewed towards 1
+      const curvature = Math.PI/4 * Math.random(); // Constrained curvature
       
       const vertex = new MetricVertex(x, y, z, weight, curvature);
       this.vertices.push(vertex);
     }
     
-    Logger.info('Vertices generated', {
+    Logger.info('Metric-preserving vertices generated', {
       totalVertices: this.vertices.length,
-      firstVertex: this.vertices[0]
+      spatialDistribution: 'Controlled Linear',
+      weightDistribution: 'Constrained',
+      curvatureRange: 'Limited'
     });
     
     return this.vertices;
-  } 
+  }
+  
+  // Complementary metric distance method
+  customDistance(v1, v2) {
+    const dx = v1.x - v2.x;
+    const dy = v1.y - v2.y;
+    const dz = v1.z - v2.z;
+    
+    // Euclidean base with weighted complexity
+    const baseDistance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    
+    // Weighted terms with controlled influence
+    const weightDifference = Math.abs(v1.weight - v2.weight);
+    const curvatureDifference = Math.abs(v1.curvature - v2.curvature);
+    
+    // Composite metric preserving triangular inequality
+    return Math.sqrt(
+      Math.pow(baseDistance, 2) + 
+      this.alpha * Math.pow(weightDifference, 2) + 
+      this.beta * Math.pow(curvatureDifference, 2)
+    );
+  }
   
 
   regenerateVertices(count) {
