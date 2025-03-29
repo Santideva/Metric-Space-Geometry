@@ -2,10 +2,9 @@
 precision mediump float;
 #endif
 
-// Mobius-Chladni Pattern Vertex Shader
-// A customizable shader that combines Chladni patterns with Möbius transformations.
+// Mobius-Chladni Pattern Line Shader
+// Adapted from the vertex shader to work with lines/edges
 // Can be used in Three.js or any WebGL framework with minor adjustments.
-
 
 // ======== Uniform Declarations ========
 
@@ -29,8 +28,15 @@ uniform vec2 uB; // Complex number b (real, imag)
 uniform vec2 uC; // Complex number c (real, imag)
 uniform vec2 uD; // Complex number d (real, imag)
 
-// Uniform for controlling the size of points in THREE.Points
-uniform float uPointSize;
+// Line specific uniforms
+uniform float uLineWidth;           // Width of the lines
+uniform float uLineDash;            // Optional: for dashed lines (0.0 = solid)
+uniform float uLineVariation;       // Controls how much the lines vary in width
+
+// ======== Varying Variables ========
+// (These will pass data to the fragment shader)
+varying vec3 vPosition;
+varying float vDistanceToCamera;
 
 // ======== Utility Functions ========
 
@@ -248,6 +254,16 @@ vec3 applyNoiseDisplacement(vec3 pos, float time) {
   return pos + vec3(displacementX, displacementY, displacementZ);
 }
 
+// ---- Line-specific operations ----
+// Function to calculate line attributes based on position and other factors
+float calculateLineAttribute(vec3 pos, float time) {
+  // Make line width vary based on position and time
+  float widthVariation = 1.0 + uLineVariation * snoise(vec3(pos.x * 0.1, pos.y * 0.1, time * 0.05));
+  
+  // You can apply additional logic here based on line segment properties
+  return widthVariation;
+}
+
 // ======== Main Shader Function ========
 
 void main() {
@@ -270,9 +286,13 @@ void main() {
   vec3 chladniPos = applyChladniTransform(pos.xy, time);
   pos.z += chladniPos.z;  // Just add the z component
 
+  // Calculate line-specific attributes
+  float lineAttribute = calculateLineAttribute(pos, time);
+  
   // Set the final position
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   
-  // Set the point size using the uniform (this is required for rendering Points with ShaderMaterial)
-  gl_PointSize = uPointSize;
+  // Pass data to fragment shader
+  vPosition = pos;
+  vDistanceToCamera = length((modelViewMatrix * vec4(pos, 1.0)).xyz);
 }

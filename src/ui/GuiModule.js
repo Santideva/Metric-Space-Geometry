@@ -21,12 +21,18 @@ class GuiModule {
   setupVertexFolder() {
     const vertexFolder = this.gui.addFolder('Vertices');
     
-    vertexFolder.add({ vertexCount: this.onUpdateCallback.vertexCount }, 'vertexCount', 3, 500)
+    // Bind directly to the state object's vertexCount
+    vertexFolder.add(this.stateStore.config, 'vertexCount', 3, 500)
       .step(1)
-      .onChange(value => this.onUpdateCallback.regenerateVertices(Math.floor(value)))
+      .onChange(value => {
+        // Update state and trigger regeneration
+        this.stateStore.update('vertexCount', Math.floor(value));
+        this.onUpdateCallback.regenerateVertices(Math.floor(value));
+      })
       .name('Vertex Count');
     
-    vertexFolder.add({ regenerate: () => this.onUpdateCallback.regenerateVertices(this.onUpdateCallback.vertexCount) }, 'regenerate')
+    // Regenerate button using the current state value
+    vertexFolder.add({ regenerate: () => this.onUpdateCallback.regenerateVertices(this.stateStore.config.vertexCount) }, 'regenerate')
       .name('Regenerate Vertices');
     
     vertexFolder.open();
@@ -88,7 +94,10 @@ class GuiModule {
       'pointSize', 
       this.stateStore.config.pointSizeRange[0], 
       this.stateStore.config.pointSizeRange[1]
-    ).onChange(value => this.stateStore.update('pointSize', value));
+    ).onChange(value => {
+      this.stateStore.update('pointSize', value);
+      this.onUpdateCallback.updateUniform('uPointSize', value);
+    });
     
     visualFolder.addColor(this.stateStore.config, 'pointColor')
       .onChange(value => this.stateStore.update('pointColor', value))

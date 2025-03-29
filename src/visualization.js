@@ -6,6 +6,8 @@ import Logger from './logger'; // Import the logger
 import { MetricVertex, MetricSpaceGeometry } from './core/metric-space-geometry';
 import vertexShader from './shaders/customVertexShader.glsl';
 import fragmentShader from './shaders/customFragmentShader.glsl';
+import lineVertexShader from './shaders/lineVertexShader.glsl';
+import lineFragmentShader from './shaders/lineFragmentShader.glsl';
 
 class MetricSpaceVisualization {
   constructor(mountElement, vertexCount = 5) {
@@ -143,6 +145,7 @@ class MetricSpaceVisualization {
         fragmentShader,
         uniforms: {
           uTime: { value: 0 },
+          uPointSize: { value: StateStore.config.pointSize },
           u_position: { value: new THREE.Vector3(0, 0, 0) },
           u_mass: { value: 1.0 },
           u_charge: { value: 0.5 },
@@ -176,6 +179,66 @@ class MetricSpaceVisualization {
       return material;
     } catch (error) {
       Logger.error('Failed to create shader material', {
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  createLineShaderMaterial() {
+    try {
+      const lineMaterial = new THREE.ShaderMaterial({
+        vertexShader: lineVertexShader,
+        fragmentShader: lineFragmentShader,
+        uniforms: {
+          // Core timing
+          uTime: { value: 0.0 },
+          
+          // Chladni pattern parameters
+          uChladniAmplitude: { value: 0.5 },
+          uChladniFrequencyX: { value: 0.1 },
+          uChladniFrequencyY: { value: 0.1 },
+          
+          // Möbius transformation parameters
+          uUseClassicalMobius: { value: false },
+          uMobiusFactor: { value: 0.5 },
+          uNoiseScale: { value: 0.2 },
+          uAnimationSpeed: { value: 0.5 },
+          
+          // Classical Möbius transformation parameters
+          uA: { value: new THREE.Vector2(1.0, 0.0) },
+          uB: { value: new THREE.Vector2(0.0, 0.0) },
+          uC: { value: new THREE.Vector2(0.0, 0.0) },
+          uD: { value: new THREE.Vector2(1.0, 0.0) },
+          
+          // Line specific uniforms
+          uLineWidth: { value: StateStore.config.lineWidth || 2.0 },
+          uLineDash: { value: StateStore.config.lineDash || 0.0 },
+          uLineVariation: { value: StateStore.config.lineVariation || 0.1 },
+          
+          // Additional uniforms
+          u_position: { value: new THREE.Vector3(0, 0, 0) },
+          u_mass: { value: 1.0 },
+          u_charge: { value: 0.5 },
+          u_symmetryIndex: { value: 0.0 },
+          u_reflectivity: { value: 0.5 },
+          u_valency: { value: 1.0 },
+          u_volume: { value: 1.0 },
+          u_density: { value: StateStore.config.lineOpacity || 1.0 },
+          u_orientation: { value: new THREE.Vector3(0, 0, 0) },
+          u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        },
+        transparent: true,
+        side: THREE.DoubleSide
+      });
+  
+      Logger.debug('Line shader material created', {
+        uniformKeys: Object.keys(lineMaterial.uniforms)
+      });
+  
+      return lineMaterial;
+    } catch (error) {
+      Logger.error('Failed to create line shader material', {
         error: error.message
       });
       throw error;
@@ -222,25 +285,22 @@ class MetricSpaceVisualization {
       }
       this.scene.add(this.renderObject);
 
-      // Connecting lines
-      const lineMaterial = new THREE.LineBasicMaterial({ 
-        color: StateStore.config.lineColor,
-        transparent: true,
-        opacity: StateStore.config.lineOpacity
-      });
-      this.lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
-      this.scene.add(this.lineSegments);
+    // Connecting lines with custom shader material
+    const lineMaterial = this.createLineShaderMaterial();
+    this.lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
+    this.scene.add(this.lineSegments);
 
-      Logger.debug('Metric geometry creation complete', {
-        renderObjectType: this.renderObject.constructor.name,
-        lineSegmentsExists: !!this.lineSegments
-      });
-    } catch (error) {
-      Logger.error('Failed to create render objects', {
-        error: error.message,
-        renderMode: this.renderMode
-      });
-      throw error;
+    Logger.debug('Metric geometry creation complete', {
+      renderObjectType: this.renderObject.constructor.name,
+      lineSegmentsExists: !!this.lineSegments,
+      lineSegmentsType: this.lineSegments ? this.lineSegments.material.constructor.name : 'none'
+    });
+  } catch (error) {
+    Logger.error('Failed to create render objects', {
+      error: error.message,
+      renderMode: this.renderMode
+    });
+    throw error;
     }
   }
 
@@ -325,6 +385,8 @@ class MetricSpaceVisualization {
   }
 
   updateVisualization(key, value) {
+    Logger.debug('[updateVisualization] Called', { key, value, renderObjectType: this.renderObject ? this.renderObject.constructor.name : 'none' });
+    
     // Update point material
     if (['pointSize', 'pointColor', 'pointOpacity'].includes(key)) {
       if (this.renderObject && this.renderObject.material) {
@@ -332,88 +394,206 @@ class MetricSpaceVisualization {
         this.renderObject.material.needsUpdate = true;
         
         try {
-          // Check if it's a Points object before setting size
           if (this.renderObject instanceof THREE.Points) {
-            // Safely set point size
-            if (typeof StateStore.config.pointSize === 'number') {
-              this.renderObject.material.size = StateStore.config.pointSize;
+            Logger.debug('[updateVisualization] Updating Points material', { key, currentPointSize: StateStore.config.pointSize });
+            // Instead of setting material.size, update the shader uniform uPointSize
+            if (typeof StateStore.config.pointSize === 'number' && this.renderObject.material.uniforms.uPointSize) {
+              this.renderObject.material.uniforms.uPointSize.value = StateStore.config.pointSize;
+              Logger.debug('[updateVisualization] uPointSize uniform updated', { newPointSize: StateStore.config.pointSize });
             }
             
-            // Safely set color - convert hex to THREE.Color
+            // Update color via the uniform if applicable, or update material.color directly if your shader uses that
             if (typeof StateStore.config.pointColor === 'number') {
-              this.renderObject.material.color = new THREE.Color(StateStore.config.pointColor);
+              const newColor = new THREE.Color(StateStore.config.pointColor);
+              if (this.renderObject.material.uniforms.uColor) {
+                this.renderObject.material.uniforms.uColor.value = newColor;
+              } else {
+                this.renderObject.material.color = newColor;
+              }
+              Logger.debug('[updateVisualization] Point color updated', { newColor: newColor.getHexString() });
             }
             
-            // Safely set opacity
+            // Update opacity
             if (typeof StateStore.config.pointOpacity === 'number') {
               this.renderObject.material.opacity = StateStore.config.pointOpacity;
               this.renderObject.material.transparent = true;
+              Logger.debug('[updateVisualization] Point opacity updated', { newOpacity: StateStore.config.pointOpacity });
             }
           }
         } catch (error) {
-          console.error('Error updating point material:', error);
+          Logger.error('Error updating point material in updateVisualization', {
+            error: error.message,
+            stack: error.stack
+          });
         }
       }
     }
   
-    // Update line material
-    if (['lineColor', 'lineOpacity'].includes(key)) {
+    // Update line material with shader uniforms
+    if (['lineColor', 'lineOpacity', 'lineWidth', 'lineDash', 'lineVariation'].includes(key)) {
       if (this.lineSegments && this.lineSegments.material) {
         try {
-          // Safely set line color
-          if (typeof StateStore.config.lineColor === 'number') {
-            this.lineSegments.material.color = new THREE.Color(StateStore.config.lineColor);
+          // For ShaderMaterial, update via uniforms
+          if (this.lineSegments.material instanceof THREE.ShaderMaterial) {
+            const uniforms = this.lineSegments.material.uniforms;
+            
+            // Update density (opacity)
+            if (typeof StateStore.config.lineOpacity === 'number' && uniforms.u_density) {
+              uniforms.u_density.value = StateStore.config.lineOpacity;
+              Logger.debug('[updateVisualization] Line opacity (density) uniform updated', { newLineOpacity: StateStore.config.lineOpacity });
+            }
+            
+            // Update line width
+            if (typeof StateStore.config.lineWidth === 'number' && uniforms.uLineWidth) {
+              uniforms.uLineWidth.value = StateStore.config.lineWidth;
+              Logger.debug('[updateVisualization] Line width uniform updated', { newLineWidth: StateStore.config.lineWidth });
+            }
+            
+            // Update line dash pattern
+            if (typeof StateStore.config.lineDash === 'number' && uniforms.uLineDash) {
+              uniforms.uLineDash.value = StateStore.config.lineDash;
+              Logger.debug('[updateVisualization] Line dash uniform updated', { newLineDash: StateStore.config.lineDash });
+            }
+            
+            // Update line variation
+            if (typeof StateStore.config.lineVariation === 'number' && uniforms.uLineVariation) {
+              uniforms.uLineVariation.value = StateStore.config.lineVariation;
+              Logger.debug('[updateVisualization] Line variation uniform updated', { newLineVariation: StateStore.config.lineVariation });
+            }
+            
+            // Update line color via charge
+            if (typeof StateStore.config.lineColor === 'number' && uniforms.u_charge) {
+              // This is a workaround - we map the color to the charge parameter which affects color in the shader
+              const colorHex = StateStore.config.lineColor;
+              const color = new THREE.Color(colorHex);
+              const hsl = {};
+              color.getHSL(hsl);
+              
+              // Map hue to charge (adjust as needed based on your shader)
+              uniforms.u_charge.value = hsl.h * 2.0;
+              Logger.debug('[updateVisualization] Line color mapped to charge uniform', { 
+                colorHex: colorHex.toString(16),
+                newCharge: uniforms.u_charge.value
+              });
+            }
+            
+            this.lineSegments.material.needsUpdate = true;
+          } 
+          // For BasicMaterial fallback
+          else {
+            if (typeof StateStore.config.lineColor === 'number') {
+              this.lineSegments.material.color = new THREE.Color(StateStore.config.lineColor);
+              Logger.debug('[updateVisualization] Line color updated (BasicMaterial)', { newLineColor: StateStore.config.lineColor });
+            }
+            if (typeof StateStore.config.lineOpacity === 'number') {
+              this.lineSegments.material.opacity = StateStore.config.lineOpacity;
+              this.lineSegments.material.transparent = true;
+              Logger.debug('[updateVisualization] Line opacity updated (BasicMaterial)', { newLineOpacity: StateStore.config.lineOpacity });
+            }
+            this.lineSegments.material.needsUpdate = true;
           }
-          
-          // Safely set line opacity
-          if (typeof StateStore.config.lineOpacity === 'number') {
-            this.lineSegments.material.opacity = StateStore.config.lineOpacity;
-            this.lineSegments.material.transparent = true;
-          }
-          
-          this.lineSegments.material.needsUpdate = true;
         } catch (error) {
-          console.error('Error updating line material:', error);
+          Logger.error('Error updating line material in updateVisualization', {
+            error: error.message,
+            stack: error.stack
+          });
         }
+      }
+    }
+    
+    // Update shader specific parameters
+    if (['chladniAmplitude', 'chladniFrequencyX', 'chladniFrequencyY', 'mobiusFactor', 'noiseScale'].includes(key)) {
+      try {
+        if (this.lineSegments && this.lineSegments.material && this.lineSegments.material.uniforms) {
+          const uniformMap = {
+            'chladniAmplitude': 'uChladniAmplitude',
+            'chladniFrequencyX': 'uChladniFrequencyX',
+            'chladniFrequencyY': 'uChladniFrequencyY',
+            'mobiusFactor': 'uMobiusFactor',
+            'noiseScale': 'uNoiseScale'
+          };
+          
+          const uniformName = uniformMap[key];
+          if (uniformName && this.lineSegments.material.uniforms[uniformName]) {
+            this.lineSegments.material.uniforms[uniformName].value = value;
+            Logger.debug(`[updateVisualization] Updated line shader uniform: ${uniformName}`, { value });
+            this.lineSegments.material.needsUpdate = true;
+          }
+        }
+      } catch (error) {
+        Logger.error('Error updating shader parameters in updateVisualization', {
+          error: error.message,
+          stack: error.stack
+        });
       }
     }
     
     // Regenerate geometry if metric parameters change
     if (['alpha', 'beta', 'gamma', 'threshold'].includes(key)) {
+      Logger.debug('[updateVisualization] Regenerating metric geometry due to change in metric parameters', { key, value });
       this.createMetricGeometry();
     }
+    
+    Logger.debug('[updateVisualization] Completed processing update', { key, value });
   }
+  
 
   animate() {
     requestAnimationFrame(this.animate.bind(this));
     
-    // Update shader time uniform for animation
-    if (this.renderObject && this.renderObject.material) {
-      this.renderObject.material.uniforms.uTime.value = performance.now() * 0.001;
+    const currentTime = performance.now() * 0.001;
+    
+    // Update shader time uniform for animation on main object
+    if (this.renderObject && this.renderObject.material && this.renderObject.material.uniforms) {
+      this.renderObject.material.uniforms.uTime.value = currentTime;
     }
-
+    
+    // Update shader time uniform for line animation
+    if (this.lineSegments && this.lineSegments.material && this.lineSegments.material.uniforms) {
+      this.lineSegments.material.uniforms.uTime.value = currentTime;
+      
+      // Update animation speed if it's in state
+      if (StateStore.config.animationSpeed !== undefined && this.lineSegments.material.uniforms.uAnimationSpeed) {
+        this.lineSegments.material.uniforms.uAnimationSpeed.value = StateStore.config.animationSpeed;
+      }
+    }
+  
     // Optional auto-rotation
     if (StateStore.config.autoRotate) {
       const rotationSpeed = 0.001 * StateStore.config.animationSpeed;
       this.scene.rotation.y += rotationSpeed;
     }
-
+  
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
+  
 
   onWindowResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-    // Update resolution uniform if shader material exists
-    if (this.renderObject && this.renderObject.material) {
-      this.renderObject.material.uniforms.u_resolution.value.set(
-        window.innerWidth, 
-        window.innerHeight
-      );
+  
+    const newResolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+    
+    // Update resolution uniform if point shader material exists
+    if (this.renderObject && this.renderObject.material && this.renderObject.material.uniforms) {
+      if (this.renderObject.material.uniforms.u_resolution) {
+        this.renderObject.material.uniforms.u_resolution.value.copy(newResolution);
+      }
     }
+    
+    // Update resolution uniform if line shader material exists
+    if (this.lineSegments && this.lineSegments.material && this.lineSegments.material.uniforms) {
+      if (this.lineSegments.material.uniforms.u_resolution) {
+        this.lineSegments.material.uniforms.u_resolution.value.copy(newResolution);
+      }
+    }
+    
+    Logger.debug('Window resized, resolution uniforms updated', {
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
   }
 
   // Cleanup method

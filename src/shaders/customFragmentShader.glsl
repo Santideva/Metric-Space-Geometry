@@ -44,8 +44,8 @@ vec3 generateDynamicColor() {
     // Use polygon properties to influence color with smoother transitions
     vec3 baseColor = vec3(
         0.5 + 0.5 * sin(u_charge * 3.0),          // Smoother red component
-        0.5 + 0.5 * cos(u_symmetryIndex * 2.0),   // Smoother green component
-        0.5 + 0.5 * tan(u_reflectivity)           // Blue component
+        0.5 + 0.5 * cos(u_symmetryIndex * 2.0),     // Smoother green component
+        0.5 + 0.5 * tan(u_reflectivity)             // Blue component
     );
     
     // Normalize and clamp color values
@@ -65,17 +65,15 @@ float calculateLightInteraction() {
 }
 
 void main() {
-    // Normalize pixel coordinates
-    vec2 uv = gl_FragCoord.xy / u_resolution.xy;
-    
-    // Center of the viewport
+    // For point sprites, use gl_PointCoord to get local coordinates (range 0.0 - 1.0)
+    vec2 uv = gl_PointCoord;
     vec2 center = vec2(0.5, 0.5);
     
     // Dynamic polygon parameters
     int sides = 5;  // Pentagon, but can be dynamically adjusted
     float baseRadius = u_volume * 0.2;
     
-    // Calculate smooth polygon mask
+    // Calculate smooth polygon mask based on local coordinates
     float polygonMask = smoothPolygon(uv, center, baseRadius, sides);
     
     // Generate dynamic color
@@ -95,6 +93,6 @@ void main() {
     // Apply light interaction with smooth falloff
     finalColor *= (1.0 - lightInteraction * 0.5);
     
-    // Output final fragment color with alpha blending
+    // Output final fragment color with alpha blending based on the polygon mask
     gl_FragColor = vec4(finalColor, polygonMask);
 }

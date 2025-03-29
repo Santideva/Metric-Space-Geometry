@@ -2,6 +2,8 @@ class StateStore {
   constructor() {
     // Metric Space Configuration
     this.config = {
+      // New: Vertex count (make sure to include this property)
+      vertexCount: 10,
 
       // Metric Space Parameters
       alpha: 1.0,   // Euclidean distance weight
@@ -11,12 +13,12 @@ class StateStore {
 
       // Extended Metric Space Controls
       minDistance: 0.1,   // Minimum inter-vertex distance
-      maxDistance: 10.0,  // Maximum inter-vertex distance
-      distortionFactor: 1.0, // New parameter for spatial warping
+      maxDistance: 50.0,  // Maximum inter-vertex distance
+      distortionFactor: 0.1, // New parameter for spatial warping
 
       // Visualization Parameters
-      pointSize: 0.2,
-      pointSizeRange: [0.01, 2.0],
+      pointSize: 0.1,
+      pointSizeRange: [0.01, 50.0],
       pointColor: 0x00ff00,
       pointOpacity: 0.7,
       pointOpacityRange: [0.1, 1.0],

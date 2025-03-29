@@ -158,11 +158,149 @@ class MetricSpaceGeometry {
     const linePositions = new Float32Array(curvedPositions);
     lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
 
+    // New method to generate surface
+    const surfaceGeometry = this.generateMetricSurface(THREE);
+
     return { 
       pointGeometry: geometry, 
       lineGeometry: lineGeometry,
+      surfaceGeometry: surfaceGeometry,
       edgeTypes: this.edgeTypes 
     };
+  }
+
+  // New method for generating metric surface using spherical parametrization
+  generateMetricSurface(THREE, thetaResolution = 50, phiResolution = 50) {
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+
+    // Compute the central point of the vertices to use as the reference for surface generation
+    const centerVertex = this.computeCentralVertex();
+    
+    // Maximum distance used as a basis for our "radius"
+    const maxDistanceFromCenter = this.computeMaxDistanceFromCenter(centerVertex);
+
+    // Generate surface points
+    for (let i = 0; i <= thetaResolution; i++) {
+      const theta = Math.PI * i / thetaResolution;
+      
+      for (let j = 0; j <= phiResolution; j++) {
+        const phi = 2 * Math.PI * j / phiResolution;
+        
+        // Custom radius computation based on metric distance
+        const metricRadius = this.computeMetricRadius(centerVertex, theta, phi, maxDistanceFromCenter);
+        
+        // Spherical coordinate transformations with metric warping
+        const x = metricRadius * Math.sin(theta) * Math.cos(phi);
+        const y = metricRadius * Math.sin(theta) * Math.sin(phi);
+        const z = metricRadius * Math.cos(theta);
+        
+        // Add vertex position
+        positions.push(x, y, z);
+        
+        // Compute surface normal using partial derivatives
+        const [nx, ny, nz] = this.computeSurfaceNormal(centerVertex, theta, phi, metricRadius);
+        normals.push(nx, ny, nz);
+        
+        // UV mapping
+        uvs.push(j / phiResolution, i / thetaResolution);
+      }
+    }
+
+    // Create geometry
+    const surfaceGeometry = new THREE.BufferGeometry();
+    surfaceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    surfaceGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    surfaceGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+    // Generate indices for surface triangulation
+    const indices = [];
+    for (let i = 0; i < thetaResolution; i++) {
+      for (let j = 0; j < phiResolution; j++) {
+        const a = i * (phiResolution + 1) + j;
+        const b = a + 1;
+        const c = (i + 1) * (phiResolution + 1) + j;
+        const d = c + 1;
+        
+        indices.push(a, c, b);
+        indices.push(b, c, d);
+      }
+    }
+    surfaceGeometry.setIndex(indices);
+
+    return surfaceGeometry;
+  }
+
+  // Compute the central vertex of the metric space
+  computeCentralVertex() {
+    let centerX = 0, centerY = 0, centerZ = 0;
+    this.vertices.forEach(v => {
+      centerX += v.x;
+      centerY += v.y;
+      centerZ += v.z;
+    });
+    
+    return new MetricVertex(
+      centerX / this.vertices.length,
+      centerY / this.vertices.length,
+      centerZ / this.vertices.length
+    );
+  }
+
+  // Compute maximum distance from center vertex
+  computeMaxDistanceFromCenter(centerVertex) {
+    return Math.max(...this.vertices.map(v => 
+      this.customDistance(centerVertex, v)
+    ));
+  }
+
+  // Compute metric-based radius for surface generation
+  computeMetricRadius(centerVertex, theta, phi, maxDistance) {
+    // Complex radius computation that considers metric properties
+    const baseRadius = maxDistance;
+    
+    // Use trigonometric warping to introduce non-uniform scaling
+    const radialFactor = Math.sin(theta) * Math.cos(phi);
+    
+    // Incorporate vertex weights and curvatures into radius computation
+    const weightInfluence = this.vertices.reduce((acc, v) => {
+      const localDistance = this.customDistance(centerVertex, v);
+      return acc + v.weight * Math.exp(-localDistance);
+    }, 0) / this.vertices.length;
+    
+    return baseRadius * (1 + radialFactor * weightInfluence * this.complexityFactor);
+  }
+
+  // Compute surface normal using partial derivatives
+  computeSurfaceNormal(centerVertex, theta, phi, radius) {
+    const epsilon = 1e-4;
+    
+    // Compute points slightly offset in theta and phi
+    const dTheta = this.computeMetricRadius(centerVertex, theta + epsilon, phi, radius);
+    const dPhi = this.computeMetricRadius(centerVertex, theta, phi + epsilon, radius);
+    
+    // Compute partial derivatives
+    const x = radius * Math.sin(theta) * Math.cos(phi);
+    const y = radius * Math.sin(theta) * Math.sin(phi);
+    const z = radius * Math.cos(theta);
+    
+    const dxdTheta = (dTheta - radius) * Math.sin(theta) * Math.cos(phi) / epsilon;
+    const dydTheta = (dTheta - radius) * Math.sin(theta) * Math.sin(phi) / epsilon;
+    const dzdTheta = (dTheta - radius) * Math.cos(theta) / epsilon;
+    
+    const dxdPhi = (dPhi - radius) * Math.sin(theta) * (-Math.sin(phi)) / epsilon;
+    const dydPhi = (dPhi - radius) * Math.sin(theta) * Math.cos(phi) / epsilon;
+    const dzdPhi = 0;
+    
+    // Compute cross product for normal
+    const nx = dydTheta * dzdPhi - dzdTheta * dydPhi;
+    const ny = dzdTheta * dxdPhi - dxdTheta * dzdPhi;
+    const nz = dxdTheta * dydPhi - dydTheta * dxdPhi;
+    
+    // Normalize the normal vector
+    const length = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    return [nx/length, ny/length, nz/length];
   }
 }
 

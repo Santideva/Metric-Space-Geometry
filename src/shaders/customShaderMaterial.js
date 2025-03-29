@@ -6,6 +6,7 @@ const shaderMaterial = new THREE.ShaderMaterial({
   fragmentShader,
   uniforms: {
     uTime: { value: 0 },
+    uPointSize: { value: StateStore.config.pointSize }, // Initially set from your state
     u_position: { value: new THREE.Vector3(0, 0, 0) },
     u_mass: { value: 1.0 },
     u_charge: { value: 0.5 },
