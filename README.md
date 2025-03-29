@@ -89,15 +89,7 @@ Planned Enhancements:
 In future releases, you will be able to interactively sculpt the geometry by deleting, adding, or transforming individual vertices and curves.
 
 Screenshots & Demos
-Below are a couple of screen capture videos that demonstrate key aspects of the project:
-
-Video 1: Metric Space Evolution
-Placed after the "Metric Spaces and Non-Euclidean Geometry" section in presentations.
-
-Video 2: Shader-Driven Transformations
-Placed after the "Shaders" section in presentations.
-
-You can also view interactive demos on Behance and our project page.
+...
 
 Future Directions
 Sculpting Functionalities:
