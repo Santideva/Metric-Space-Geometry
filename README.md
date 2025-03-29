@@ -1,4 +1,5 @@
 Overview
+
 Metric Space Visualization is an experimental project that reimagines geometry as a dynamic, interactive metric space. Instead of static meshes, vertices are treated as elements of a continuously evolving space—where custom metrics, shader-driven transformations, and non-Euclidean concepts come together to create stunning, organic visuals.
 
 By leveraging three.js, custom shader materials, and an interactive GUI (dat.GUI), this project showcases how mathematics and art merge in the digital domain. The project invites exploration into unusual geometries, dynamic transformations, and planned future sculpting functionalities.
